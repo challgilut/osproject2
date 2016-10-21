@@ -78,6 +78,22 @@ bool create(const char *file, unsigned initial_size)
   return created;
 }
 
+bool check_buff(void* buffer, int size){
+  int i;
+  char* local_buffer = (char *) buffer;
+  for (i = 0; i < size; i++)
+    {
+      struct sup_page_entry *spte = get_spte((void *) local_buffer);
+      if (spte)
+      {
+        if (!spte->writable)
+          return false;
+      }
+      local_buffer++;
+    }
+  return true;
+}
+
 
 void
 syscall_init (void) 
@@ -196,6 +212,8 @@ syscall_handler (struct intr_frame *f)
     int fd = *(int *)(f->esp + 4);
     void *buffer = *(char**)(f->esp + 8);
     unsigned size = *(unsigned *)(f->esp + 12);
+    if(!check_buff(buffer, size))
+      exit(-1);
     if (!ptr_verification(buffer) || !ptr_verification(buffer + size))
       exit(-1);
     f->eax = read(fd, buffer, size);
