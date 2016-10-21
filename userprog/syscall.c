@@ -10,6 +10,8 @@
 #include "devices/shutdown.h"
 #include "lib/user/syscall.h"
 #include "filesys/filesys.h"
+#include "vm/frame.h"
+#include "vm/page.h"
 //#include "filesys/"
 
 #define WNOHANG   0x00000001
@@ -430,6 +432,7 @@ int filesize(int fd)
 * checks for pointer being equal to NULL or if address is not mapped to memory
 * Returns false if ptr is invalid and true if valid
 */
+
 bool ptr_verification(void *ptr) {
   struct thread *t = thread_current(); //current thread
   int base = PHYS_BASE;
@@ -439,7 +442,6 @@ bool ptr_verification(void *ptr) {
   } 
   return false;
 }
-
 
 void close(int fd)
 {

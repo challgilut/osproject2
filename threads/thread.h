@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include <hash.h>
 #include "synch.h"
 
 /* States in a thread's life cycle. */
@@ -109,6 +110,9 @@ struct thread
     tid_t parent;
     struct file *source;
     struct semaphore sema;
+    struct hash spt;
+    struct list mmap_list;
+    int mapid;
   };
 
 /* If false (default), use round-robin scheduler.

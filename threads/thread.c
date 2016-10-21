@@ -14,6 +14,8 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #include "userprog/syscall.h"
+#include "vm/frame.h"
+#include "vm/swap.h"
 #endif
 
 /* Random value for struct thread's `magic' member.
@@ -93,6 +95,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  frame_table_init();
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -487,6 +490,8 @@ init_thread (struct thread *t, const char *name, int priority, tid_t parent)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
   t->parent = parent;
+  list_init(&t->mmap_list);
+  t->mapid = 0;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
