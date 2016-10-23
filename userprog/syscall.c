@@ -34,7 +34,8 @@ struct file_descriptor *getOpenFile(int fd);
 struct semaphore sema;
 
 static int (*syscall_handlers[20]) (struct intr_frame *);
-bool ptr_verification(void *ptr);
+bool ptr_verification(void *ptr, void *esp);
+void *global_esp;
 
 static void syscall_handler (struct intr_frame *);
 //need to delcare some functions here;
@@ -70,7 +71,8 @@ void exit(int status)
 */
 bool create(const char *file, unsigned initial_size)
 {
-  if(!ptr_verification(file))
+  void *esp = global_esp;
+  if(!ptr_verification(file, esp))
     exit(-1);
   lock_acquire(&lock);
   bool created = filesys_create(file, initial_size);
@@ -78,9 +80,11 @@ bool create(const char *file, unsigned initial_size)
   return created;
 }
 
-bool check_buff(void* buffer, int size){
+bool check_buff(void* buffer, int size, void* esp){
   int i;
   char* local_buffer = (char *) buffer;
+  if(!ptr_verification(local_buffer, esp))
+    return false;
   for (i = 0; i < size; i++)
     {
       struct sup_page_entry *spte = get_spte((void *) local_buffer);
@@ -116,10 +120,11 @@ syscall_handler (struct intr_frame *f)
   int i = 0;
   for(; i < 4; i++)
   {
-    if(!ptr_verification(f->esp + i))
+    if(!ptr_verification(f->esp + i, f->esp))
       exit(-1);
 }
   int esp =*(int*)(f->esp);
+  global_esp = esp;
   if(esp == 0){
     //halt();
   }
@@ -127,7 +132,7 @@ syscall_handler (struct intr_frame *f)
     int status;
     for(i = 0; i < 4; i++)
     {
-      if(!ptr_verification(f->esp + 4 + i))
+      if(!ptr_verification(f->esp + 4 + i, f->esp))
       {
         exit(-1);
         return;
@@ -141,7 +146,7 @@ syscall_handler (struct intr_frame *f)
     int i = 0;
     for(; i < 4; i++)
     {
-      if(!ptr_verification(f->esp + 4 + i))
+      if(!ptr_verification(f->esp + 4 + i, f->esp))
         exit(-1);
     }
     char *cmd = *(char**)(f->esp+4);
@@ -152,7 +157,7 @@ syscall_handler (struct intr_frame *f)
     int i = 0;
     for(; i< 4; i ++)
     {
-      if(!ptr_verification(f->esp +4 +i))
+      if(!ptr_verification(f->esp +4 +i, f->esp))
         exit(-1);
     }
     id = *((int*)f->esp + 1);
@@ -161,13 +166,13 @@ syscall_handler (struct intr_frame *f)
   else if(esp == 4){
     for(i = 0; i < 4; i++)
     {
-      if (!ptr_verification(f->esp + 4 + i) || !ptr_verification(f->esp + 8 + i)){
+      if (!ptr_verification(f->esp + 4 + i, f->esp) || !ptr_verification(f->esp + 8 + i, f->esp)){
         exit(-1);
       }
     }
     char *name = *(char **)(f->esp + 4);
     unsigned size = *(int *)(f->esp + 8);
-    if(name == NULL || strcmp(name, "") == 0 || !ptr_verification(name))
+    if(name == NULL || strcmp(name, "") == 0 || !ptr_verification(name, f->esp))
       exit(-1);
     f->eax = create(name, size);
   }
@@ -175,7 +180,7 @@ syscall_handler (struct intr_frame *f)
     int i = 0;
     for(; i< 4; i ++)
     {
-      if (!ptr_verification(f->esp +4 + i))
+      if (!ptr_verification(f->esp +4 + i, f->esp))
         exit(-1);
     }
     char *str = *(char **)(f->esp + 4);
@@ -184,7 +189,7 @@ syscall_handler (struct intr_frame *f)
   else if(esp == 6){
     for(; i < 4; i ++)
     {
-      if(!ptr_verification(f->esp + 4 + i))
+      if(!ptr_verification(f->esp + 4 + i, f->esp))
         exit(-1);
     }
     char *name = *(char **)(f->esp + 4); 
@@ -196,7 +201,7 @@ syscall_handler (struct intr_frame *f)
     int i = 0;
     for(; i < 4; i++)
     {
-      if (!ptr_verification(f->esp +4 + i))
+      if (!ptr_verification(f->esp +4 + i, f->esp))
         exit(-1);
     }
     int fd = *(int *)(f->esp + 4);
@@ -206,16 +211,16 @@ syscall_handler (struct intr_frame *f)
     int i = 0;
     for(; i < 12; i ++)
     {
-      if (!ptr_verification(f->esp + 4 + i))
+      if (!ptr_verification(f->esp + 4 + i, f->esp))
         exit(-1);
     }
     int fd = *(int *)(f->esp + 4);
     void *buffer = *(char**)(f->esp + 8);
     unsigned size = *(unsigned *)(f->esp + 12);
-    if(!check_buff(buffer, size))
+    if(!check_buff(buffer, size, f->esp))
       exit(-1);
-    if (!ptr_verification(buffer) || !ptr_verification(buffer + size))
-      exit(-1);
+    //if (!ptr_verification(buffer))// || !ptr_verification(buffer + size))
+    //  exit(-1);
     f->eax = read(fd, buffer, size);
   }
   else if(esp == 9)
@@ -223,13 +228,15 @@ syscall_handler (struct intr_frame *f)
     int i = 0;
     for(; i < 12; i++)
     {
-      if (!ptr_verification(f->esp + 4 + i))
+      if (!ptr_verification(f->esp + 4 + i, f->esp))
         exit(-1);
     }
     int fd = *(int *)(f->esp + 4);
     void *buffer = *(char**)(f->esp + 8);
     unsigned size = *(unsigned *)(f->esp + 12);
-    if (!ptr_verification(buffer) || !ptr_verification(buffer + size)){
+    if(!check_buff(buffer, size, f->esp))
+      exit(-1);
+    if (!ptr_verification(buffer, f->esp) || !ptr_verification(buffer + size, f->esp)){
       exit(-1);
     }
     f->eax = write(fd, buffer, size);
@@ -239,7 +246,7 @@ syscall_handler (struct intr_frame *f)
     int i = 0;
     for(; i< 8; i ++)
     {
-      if (!ptr_verification(f->esp +4 + i))
+      if (!ptr_verification(f->esp +4 + i, f->esp))
         exit(-1);
     }
     int fd = *(int *)(f->esp + 4);
@@ -251,7 +258,7 @@ syscall_handler (struct intr_frame *f)
     int i = 0;
     for(; i < 4; i ++)
     {
-      if (!ptr_verification(f->esp + 4 + i))
+      if (!ptr_verification(f->esp + 4 + i, f->esp))
         exit(-1);
     }
     int fd = *(int *)(f->esp + 4);
@@ -262,7 +269,7 @@ syscall_handler (struct intr_frame *f)
     int i = 0;
     for(; i < 4; i ++)
     {
-      if (!ptr_verification(f->esp +4 + i))
+      if (!ptr_verification(f->esp +4 + i, f->esp))
         exit(-1);
     }
     int fd = *(int *)(f->esp + 4);
@@ -297,7 +304,8 @@ void seek (int fd, unsigned position){
 */
 tid_t exec(const char *cmd_line)
 {
-  if(!ptr_verification(cmd_line))
+  void* esp = global_esp;
+  if(!ptr_verification(cmd_line, esp))
     exit(-1);
   if(strcmp(cmd_line, "") == 0 || strlen(cmd_line) == 0 || strlen(cmd_line) > PGSIZE)
   {
@@ -404,7 +412,8 @@ struct file_descriptor *getOpenFileTid(int fd, tid_t tid){
 */
 int open(const char *name)
 {
- if(!ptr_verification(name))
+  void *esp = global_esp;
+ if(!ptr_verification(name, esp))
     exit(-1);
 
   lock_acquire(&lock);
@@ -451,14 +460,27 @@ int filesize(int fd)
 * Returns false if ptr is invalid and true if valid
 */
 
-bool ptr_verification(void *ptr) {
-  struct thread *t = thread_current(); //current thread
-  int base = PHYS_BASE;
-  if(ptr != NULL && is_user_vaddr(ptr)){ //checks if the pointer is NULL and if it is a valid address
-    if(pagedir_get_page (t->pagedir, ptr) != NULL) //checks if value is mapped to memory, if it is then returns true else returns false
-      return true;
-  } 
-  return false;
+bool ptr_verification(void *vaddr, void *esp) {
+  if (!is_user_vaddr(vaddr) || vaddr < USER_VADDR_BOTTOM || vaddr == NULL)
+    {
+      return false;
+    }
+  bool load = false;
+  struct sup_page_entry *spte = get_spte((void *) vaddr);
+  if (spte)
+    {
+      load_page(spte);
+      load = spte->is_loaded;
+    }
+  else if (vaddr >= esp - STACK_HEURISTIC)
+    {
+      load = grow_stack((void *) vaddr);
+    }
+  if (!load)
+    {
+      return false;
+    }
+  return true;
 }
 
 void close(int fd)
