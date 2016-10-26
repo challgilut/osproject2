@@ -83,10 +83,11 @@ bool create(const char *file, unsigned initial_size)
 bool check_buff(void* buffer, int size, void* esp){
   int i;
   char* local_buffer = (char *) buffer;
-  if(!ptr_verification(local_buffer, esp))
-    return false;
+
   for (i = 0; i < size; i++)
     {
+      if(!ptr_verification(local_buffer, esp))
+        return false;
       struct sup_page_entry *spte = get_spte((void *) local_buffer);
       if (spte)
       {
@@ -98,6 +99,36 @@ bool check_buff(void* buffer, int size, void* esp){
   return true;
 }
 
+
+void unpin_ptr (void* vaddr)
+{
+  struct sup_page_entry *spte = get_spte(vaddr);
+  if (spte)
+    {
+      spte->pinned = false;
+    }
+}
+
+void unpin_string (void* str)
+{
+  unpin_ptr(str);
+  while (* (char *) str != 0)
+    {
+      str = (char *) str + 1;
+      unpin_ptr(str);
+    }
+}
+
+void unpin_buffer (void* buffer, unsigned size)
+{
+  unsigned i;
+  char* local_buffer = (char *) buffer;
+  for (i = 0; i < size; i++)
+    {
+      unpin_ptr(local_buffer);
+      local_buffer++;
+    }
+}
 
 void
 syscall_init (void) 
@@ -151,6 +182,7 @@ syscall_handler (struct intr_frame *f)
     }
     char *cmd = *(char**)(f->esp+4);
     f->eax = exec(cmd);
+    unpin_string((void *)cmd);
   }
   else if(esp == 3){
     tid_t id = 0;
@@ -175,6 +207,7 @@ syscall_handler (struct intr_frame *f)
     if(name == NULL || strcmp(name, "") == 0 || !ptr_verification(name, f->esp))
       exit(-1);
     f->eax = create(name, size);
+    unpin_string((void *)name);
   }
   else if(esp == 5){
     int i = 0;
@@ -196,6 +229,7 @@ syscall_handler (struct intr_frame *f)
     if(name == NULL)
       exit(-1);
     f->eax = open(name);
+    unpin_string((void *)name);
   }
   else if(esp == 7){
     int i = 0;
@@ -219,9 +253,9 @@ syscall_handler (struct intr_frame *f)
     unsigned size = *(unsigned *)(f->esp + 12);
     if(!check_buff(buffer, size, f->esp))
       exit(-1);
-    //if (!ptr_verification(buffer))// || !ptr_verification(buffer + size))
-    //  exit(-1);
-    f->eax = read(fd, buffer, size);
+    int temp = read(fd, buffer, size);
+    f->eax = temp;
+    unpin_buffer((void *)buffer, size);
   }
   else if(esp == 9)
   {
@@ -240,6 +274,7 @@ syscall_handler (struct intr_frame *f)
       exit(-1);
     }
     f->eax = write(fd, buffer, size);
+    unpin_buffer((void *)buffer, size);
   }
   else if(esp == 10)
   {
@@ -280,6 +315,7 @@ syscall_handler (struct intr_frame *f)
 
   }
 }
+
 /*Terminates Pintos by calling shutdown_power_off() (declared in "threads/init.h").
 *This should be seldom used, because you lose some information about possible deadlock situations, etc.
 */

@@ -66,8 +66,6 @@ tid_t process_execute (const char *file_name)
     if (fn_copy == NULL)
         return TID_ERROR;
     strlcpy (fn_copy, file_name, PGSIZE);
-    if (is_user_vaddr(file_name))
-      file_name = pagedir_get_page(thread_current()->pagedir, file_name);
 
     char actual_name[MAX_LENGTH]; 
     get_name(file_name, actual_name);
